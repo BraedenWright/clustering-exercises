@@ -9,6 +9,7 @@ import sklearn.linear_model
 import sklearn.feature_selection
 import sklearn.preprocessing
 
+import env
 from env import user, password, host
 import warnings
 warnings.filterwarnings('ignore')
@@ -63,6 +64,9 @@ def wrangle_zillow():
     url = f"mysql+pymysql://{env.user}:{env.password}@{env.host}/zillow"
 
     df = pd.read_sql(query, url)
+    
+    # Drop any duplicate properties
+    df = df.drop_duplicates('id')
     
     # Download cleaned data to a .csv
     df.to_csv(filename, index=False)
