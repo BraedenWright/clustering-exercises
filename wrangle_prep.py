@@ -30,42 +30,42 @@ def wrangle_zillow():
     url = f"mysql+pymysql://{user}:{password}@{host}/zillow"
 
     query = '''
-        SELECT bedroomcnt, bathroomcnt, calculatedfinishedsquarefeet, taxvaluedollarcnt, yearbuilt, fips
-        FROM properties_2017
-        LEFT JOIN propertylandusetype USING(propertylandusetypeid)
-        WHERE propertylandusedesc IN ('Single Family Residential', 'Inferred Single Family Residential')
+        SELECT prop.*, 
+               pred.logerror, 
+               pred.transactiondate, 
+               air.airconditioningdesc, 
+               arch.architecturalstyledesc, 
+               build.buildingclassdesc, 
+               heat.heatingorsystemdesc, 
+               landuse.propertylandusedesc, 
+               story.storydesc, 
+               construct.typeconstructiondesc 
+               
+        FROM properties_2017 prop  
+                INNER JOIN (SELECT parcelid,
+                                  logerror,
+                                  Max(transactiondate) transactiondate 
+        FROM predictions_2017 
+                GROUP BY parcelid, logerror) pred USING (parcelid)
+                
+        LEFT JOIN airconditioningtype air USING (airconditioningtypeid) 
+        LEFT JOIN architecturalstyletype arch USING (architecturalstyletypeid) 
+        LEFT JOIN buildingclasstype build USING (buildingclasstypeid) 
+        LEFT JOIN heatingorsystemtype heat USING (heatingorsystemtypeid) 
+        LEFT JOIN propertylandusetype landuse USING (propertylandusetypeid) 
+        LEFT JOIN storytype story USING (storytypeid) 
+        LEFT JOIN typeconstructiontype construct USING (typeconstructiontypeid)
+        
+        WHERE prop.latitude IS NOT NULL 
+        AND prop.longitude IS NOT NULL AND transactiondate <= '2017-12-31' 
         '''
 
+    url = f"mysql+pymysql://{env.user}:{env.password}@{env.host}/zillow"
+
     df = pd.read_sql(query, url)
-
-    # Rename columns
-    df = df.rename(columns = {
-                          'bedroomcnt':'bedrooms', 
-                          'bathroomcnt':'bathrooms', 
-                          'calculatedfinishedsquarefeet':'sqr_feet',
-                          'taxvaluedollarcnt':'tax_value', 
-                          'yearbuilt':'year_built'})
     
-    # Drop null values
-    df = df.dropna()
-
-    # Remove Outliers
-    df = df[df.tax_value < 847733.0]
-    df = df[df.sqr_feet < 50000.0]
-    df= df[df.bedrooms > 0.0]
-    df = df[df.year_built > 1950]
-    
-    # Change the dtype of 'year_built' and 'fips'
-    # First as int to get rid of '.0'
-    df.year_built = df.year_built.astype(int)
-    df.fips = df.fips.astype(int)
-    
-    # Then as object for categorical sorting
-    df.year_built = df.year_built.astype(object)
-    df.fips = df.fips.astype(object)
-
-    # Download cleaned data to a .csv
-    df.to_csv(filename, index=False)
+    print('Downloading data from SQL...')
+    print('Saving to .csv')
 
     return df
 
@@ -117,4 +117,54 @@ def scale_data(train, validate, test, scaler, return_scaler=False):
         return train_scaled, validate_scaled, test_scaled
 
     
+# Outliers
+# Borrowed from Zac
+
+def get_upper_outliers(s, k):
+    '''
+    Given a series and a cutoff value, k, returns the upper outliers for the
+    series.
     
+    The values returned will be either 0 (if the point is not an outlier), or a
+    number that indicates how far away from the upper bound the observation is.
+    '''
+    q1, q3 = s.quantile([.25, .75])
+    iqr = q3 - q1
+    upper_bound = q3 + k * iqr
+    return s.apply(lambda x: max([x - upper_bound, 0]))
+
+
+
+def add_upper_outlier_columns(df, k):
+    '''
+    Add a column with the suffix _outliers for all the numeric columns
+    in the given dataframe.
+    '''
+    # outlier_cols = {col + '_outliers': get_upper_outliers(df[col], k)
+    #                 for col in df.select_dtypes('number')}
+    # return df.assign(**outlier_cols)
+    
+    for col in df.select_dtypes('number'):
+        df[col + '_outliers'] = get_upper_outliers(df[col], k)
+        
+    return df
+    
+    
+# Functions for null metrics
+
+def column_nulls(df):
+    missing = df.isnull().sum()
+    rows = df.shape[0]
+    missing_percent = missing / rows
+    cols_missing = pd.DataFrame({'missing_count': missing, 'missing_percent': missing_percent})
+    return cols_missing
+
+
+
+def columns_missing(df):
+    df2 = pd.DataFrame(df.isnull().sum(axis =1), columns = ['num_cols_missing']).reset_index()\
+    .groupby('num_cols_missing').count().reset_index().\
+    rename(columns = {'index': 'num_rows' })
+    df2['pct_cols_missing'] = df2.num_cols_missing/df.shape[1]
+    return df2
+
