@@ -64,6 +64,9 @@ def wrangle_zillow():
 
     df = pd.read_sql(query, url)
     
+    # Download cleaned data to a .csv
+    df.to_csv(filename, index=False)
+    
     print('Downloading data from SQL...')
     print('Saving to .csv')
 
@@ -168,3 +171,13 @@ def columns_missing(df):
     df2['pct_cols_missing'] = df2.num_cols_missing/df.shape[1]
     return df2
 
+
+
+# Missing Values
+
+def handle_missing_values(df, prop_required_column = .5, prop_required_row = .70):
+    threshold = int(round(prop_required_column*len(df.index),0))
+    df.dropna(axis=1, thresh=threshold, inplace=True)
+    threshold = int(round(prop_required_row*len(df.columns),0))
+    df.dropna(axis=0, thresh=threshold, inplace=True)
+    return df
