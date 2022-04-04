@@ -15,11 +15,22 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+
+
+def handle_missing_values(df, prop_required_column = .5, prop_required_row = .70):
+    '''
+    
+    '''
+    threshold = int(round(prop_required_column*len(df.index),0))
+    df.dropna(axis=1, thresh=threshold, inplace=True)
+    threshold = int(round(prop_required_row*len(df.columns),0))
+    df.dropna(axis=0, thresh=threshold, inplace=True)
+    return df
+
+
+
 def wrangle_zillow():
     ''' 
-    This function pulls data from the zillow database from SQL and cleans the data up by changing the column names and romoving rows with null values.  
-    Also changes 'fips' and 'year_built' columns into object data types instead of floats, since they are more catergorical, after which the dataframe is saved to a .csv.
-    If this has already been done, the function will just pull from the zillow.csv
     '''
 
     filename = 'zillow.csv'
@@ -27,9 +38,8 @@ def wrangle_zillow():
     if os.path.exists(filename):
         print('Reading cleaned data from csv file...')
         return pd.read_csv(filename)
-
-    url = f"mysql+pymysql://{user}:{password}@{host}/zillow"
-
+    
+    
     query = '''
         SELECT prop.*, 
                pred.logerror, 
@@ -55,7 +65,7 @@ def wrangle_zillow():
         LEFT JOIN heatingorsystemtype heat USING (heatingorsystemtypeid) 
         LEFT JOIN propertylandusetype landuse USING (propertylandusetypeid) 
         LEFT JOIN storytype story USING (storytypeid) 
-        LEFT JOIN typeconstructiontype construct USING (typeconstructiontypeid)
+        LEFT JOIN typeconstructiontype construct USING (typeconstructiontypeid) 
         
         WHERE prop.latitude IS NOT NULL 
         AND prop.longitude IS NOT NULL AND transactiondate <= '2017-12-31' 
@@ -65,15 +75,33 @@ def wrangle_zillow():
 
     df = pd.read_sql(query, url)
     
-    # Drop any duplicate properties
-    df = df.drop_duplicates('id')
+    # Single units only
+    single_unit = [261, 262, 263, 264, 266, 268, 273, 276, 279]
+    df = df[df.propertylandusetypeid.isin(single_unit)]
     
-    # Download cleaned data to a .csv
-    df.to_csv(filename, index=False)
+    # Refine
+    df = df[(df.bedroomcnt > 0) & (df.bathroomcnt > 0) & (df.unitcnt<=1)|df.unitcnt.isnull()]
+    
+    # Missing Values
+    df = handle_missing_values(df)
+    
+    # Columns to drop
+    columns_to_drop = ['id', 'heatingorsystemdesc', 'heatingorsystemtypeid', 'finishedsquarefeet12', 'calculatedbathnbr', 'propertycountylandusecode', 'censustractandblock', 'fullbathcnt', 'propertylandusetypeid', 'propertylandusedesc', 'propertyzoningdesc', 'unitcnt']
+    df = df.drop(columns=columns_to_drop)
+    
+    # Remove nulls for buildingqualitytypeid and lotsizesquarefeet
+    df.buildingqualitytypeid.fillna(6.0, inplace= True)
+    df.lotsizesquarefeet.fillna(7313, inplace=True)
+    
+    # Remaining nulls
+    df.dropna(inplace=True)
+    
+    # Outliers
+    df = df[df.calculatedfinishedsquarefeet < 9000]
+    df = df[df.taxamount < 20000]
     
     print('Downloading data from SQL...')
     print('Saving to .csv')
-
     return df
 
 
