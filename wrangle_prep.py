@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 import sklearn.linear_model
 import sklearn.feature_selection
 import sklearn.preprocessing
+from sklearn.preprocessing import MinMaxScaler
 
 import env
 from env import user, password, host
@@ -26,6 +27,7 @@ def handle_missing_values(df, prop_required_column = .5, prop_required_row = .70
     threshold = int(round(prop_required_row*len(df.columns),0))
     df.dropna(axis=0, thresh=threshold, inplace=True)
     return df
+
 
 
 
@@ -128,16 +130,18 @@ def split_data(df):
 
 
 
-def scale_data(train, validate, test, scaler, return_scaler=False):
+def scale_data(train, validate, test, return_scaler=False):
     '''
     This function takes in train, validate, and test dataframes and returns a scaled copy of each.
     If return_scaler=True, the scaler object will be returned as well
     '''
     
-    num_columns = ['bedrooms', 'bathrooms', 'sqr_feet', 'tax_value', 'taxamount']
+    scaler = MinMaxScaler()
+    
+    num_columns = ['bedroomcnt', 'bathroomcnt', 'calculatedfinishedsquarefeet', 'lotsizesquarefeet', 'taxamount', 'roomcnt', 'structuretaxvaluedollarcnt', 'taxvaluedollarcnt', 'landtaxvaluedollarcnt']
     
     train_scaled = train.copy()
-    validated_scaled = validate.copy()
+    validate_scaled = validate.copy()
     test_scaled = test.copy()
     
     scaler.fit(train[num_columns])
